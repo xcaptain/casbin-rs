@@ -3,7 +3,6 @@ use std::io::prelude::*;
 use std::io::BufReader;
 
 use crate::model::Model;
-use crate::rbac::RoleManager;
 
 pub trait Adapter {
     // 实现数据操作的方法，默认是file adapter
@@ -100,9 +99,8 @@ fn load_policy_line(line: String, m: &mut Model) {
         tokens[i] = tokens[i].trim().to_string();
     }
     let key = tokens[0].clone();
-    let sec = tokens[1].clone();
+    let sec = key.chars().nth(0).unwrap().to_string();
 
-    // TODO: 测试是否t1，t2会自动更新（联动）
     if let Some(t1) = m.model.get_mut(&sec) {
         if let Some(t2) = t1.get_mut(&key) {
             t2.policy.push(tokens[1..].to_vec());

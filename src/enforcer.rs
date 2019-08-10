@@ -1,5 +1,5 @@
 // 核心enforcer类，构造函数和校验方法
-use crate::adapter::FileAdapter;
+use crate::adapter::{Adapter, FileAdapter};
 use crate::effector::{DefaultEffector, EffectKind, Effector};
 use crate::model::Model;
 use crate::model::{load_function_map, FunctionMap};
@@ -63,9 +63,11 @@ pub struct Enforcer {
 
 impl Enforcer {
     pub fn new(m: Model, a: FileAdapter) -> Self {
+        let mut m = m;
         let fm = load_function_map();
         let eft = DefaultEffector::default();
         let rm = DefaultRoleManager::new(10);
+        a.load_policy(&mut m);
         // TODO: 要通过 build links把rm传给每个assertion map
         let e = Self {
             model: m,
@@ -93,12 +95,9 @@ impl Enforcer {
             .iter()
             .enumerate()
         {
-            // r_tokens.insert(token.clone(), i);
+            let scopeExp = format!("let {} = \"{}\";", token.clone(), rvals[i]);
             engine
-                .eval_with_scope::<()>(
-                    &mut scope,
-                    format!("let {} = \"{}\";", token.clone(), rvals[i]).as_str(),
-                )
+                .eval_with_scope::<()>(&mut scope, scopeExp.as_str())
                 .expect("set rtoken scope failed");
         }
         // 准备从字符串求值一个表达式
@@ -134,6 +133,7 @@ impl Enforcer {
             .policy
             .len();
         if policy_len != 0 {
+            policy_effects = vec![EffectKind::Allow; policy_len];
             if self
                 .model
                 .model
@@ -171,8 +171,6 @@ impl Enforcer {
                 {
                     return false;
                 }
-                // parameters.p_vals = pvals.clone();
-                // let mut p_tokens: HashMap<String, usize> = HashMap::new();
                 for (i, token) in self
                     .model
                     .model
@@ -184,12 +182,9 @@ impl Enforcer {
                     .iter()
                     .enumerate()
                 {
-                    // p_tokens.insert(token.clone(), i);
+                    let scopeExp = format!("let {} = \"{}\";", token.clone(), pvals[i]);
                     engine
-                        .eval_with_scope::<()>(
-                            &mut scope,
-                            format!("let {} = \"{}\";", token.clone(), pvals[i]).as_str(),
-                        )
+                        .eval_with_scope::<()>(&mut scope, scopeExp.as_str())
                         .expect("set ptoken scope failed");
                 }
 
@@ -214,13 +209,9 @@ impl Enforcer {
                 .iter()
                 .enumerate()
             {
-                // p_tokens.insert(token.clone(), i);
-                let _exp1 = format!("let {} = \"{}\";", token.clone(), "").as_str();
+                let scopeExp = format!("let {} = \"{}\";", token.clone(), "");
                 engine
-                    .eval_with_scope::<()>(
-                        &mut scope,
-                        format!("let {} = \"{}\";", token.clone(), "").as_str(),
-                    )
+                    .eval_with_scope::<()>(&mut scope, scopeExp.as_str())
                     .expect("set ptoken in else scope failed");
             }
             let eval_result = engine
@@ -265,7 +256,7 @@ mod tests {
             "r.sub == p.sub && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)",
         );
 
-        let adapter = FileAdapter::new("../examples/keymatch_policy.csv");
+        let adapter = FileAdapter::new("examples/keymatch_policy.csv");
 
         let enforcer = Enforcer::new(m, adapter);
         assert_eq!(
@@ -274,6 +265,30 @@ mod tests {
                 "alice".to_owned(),
                 "/alice_data/resource1".to_owned(),
                 "GET".to_owned()
+            ])
+        );
+        assert_eq!(
+            true,
+            enforcer.enforce(vec![
+                "alice".to_owned(),
+                "/alice_data/resource1".to_owned(),
+                "POST".to_owned()
+            ])
+        );
+        assert_eq!(
+            true,
+            enforcer.enforce(vec![
+                "alice".to_owned(),
+                "/alice_data/resource2".to_owned(),
+                "GET".to_owned()
+            ])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec![
+                "alice".to_owned(),
+                "/alice_data/resource2".to_owned(),
+                "POST".to_owned()
             ])
         );
     }

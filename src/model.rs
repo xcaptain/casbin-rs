@@ -116,10 +116,10 @@ pub fn load_function_map() -> FunctionMap {
     return fm;
 }
 
-fn key_match(key1: String, key2: String) -> bool {
+pub fn key_match(key1: String, key2: String) -> bool {
     if let Some(i) = key2.find("*") {
         if key1.len() > i {
-            return &key1[i..i] == &key2[..i];
+            return &key1[..i] == &key2[..i];
         }
         return &key1[..] == &key2[..i];
     } else {
@@ -170,7 +170,7 @@ fn key_match2_func(args: Vec<String>) -> bool {
 //     return key_match3(name1, name2);
 // }
 
-fn regex_match(key1: String, key2: String) -> bool {
+pub fn regex_match(key1: String, key2: String) -> bool {
     return Regex::new(key2.as_str()).unwrap().is_match(key1.as_str());
 }
 
@@ -178,4 +178,15 @@ fn regex_match_func(args: Vec<String>) -> bool {
     let name1 = args[0].clone();
     let name2 = args[1].clone();
     return regex_match(name1, name2);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_match() {
+        assert_eq!(true, key_match("/alice_data/resource1".to_owned(), "/alice_data/*".to_owned()));
+        assert_eq!(true, key_match("GET".to_owned(), "GET".to_owned()));
+    }
 }

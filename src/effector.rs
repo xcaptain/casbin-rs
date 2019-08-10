@@ -2,7 +2,7 @@ pub trait Effector {
     fn merge_effects(&self, expr: String, effects: Vec<EffectKind>, results: Vec<f64>) -> bool;
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum EffectKind {
     Allow = 0,
     Indeterminate = 1,

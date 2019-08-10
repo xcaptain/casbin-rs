@@ -1,4 +1,3 @@
-// 核心enforcer类，构造函数和校验方法
 use crate::adapter::{Adapter, FileAdapter};
 use crate::effector::{DefaultEffector, EffectKind, Effector};
 use crate::model::Model;
@@ -8,13 +7,13 @@ use std::collections::HashMap;
 
 use rhai::{Engine, FnRegister, Scope};
 
-pub trait MatchFnClone: Fn(Vec<String>) -> bool {
+pub trait MatchFnClone: Fn(Vec<&str>) -> bool {
     fn clone_box(&self) -> Box<dyn MatchFnClone>;
 }
 
 impl<T> MatchFnClone for T
 where
-    T: 'static + Fn(Vec<String>) -> bool + Clone,
+    T: 'static + Fn(Vec<&str>) -> bool + Clone,
 {
     fn clone_box(&self) -> Box<dyn MatchFnClone> {
         Box::new(self.clone())
@@ -29,15 +28,15 @@ impl Clone for Box<dyn MatchFnClone> {
 
 // 至少长度为2
 pub fn generate_g_function(rm: DefaultRoleManager) -> Box<dyn MatchFnClone> {
-    let cb = move |args: Vec<String>| -> bool {
+    let cb = move |args: Vec<&str>| -> bool {
         let name1 = args[0].clone();
         let name2 = args[1].clone();
 
         if args.len() == 2 {
-            return rm.has_link(name1, name2, None);
+            return rm.has_link(name1, name2, vec![]);
         } else {
             let domain = args[2].clone();
-            return rm.has_link(name1, name2, Some(vec![domain]));
+            return rm.has_link(name1, name2, vec![domain]);
         }
     };
     return Box::new(cb);
@@ -68,7 +67,6 @@ impl Enforcer {
         let eft = DefaultEffector::default();
         let rm = DefaultRoleManager::new(10);
         a.load_policy(&mut m);
-        // TODO: 要通过 build links把rm传给每个assertion map
         let e = Self {
             model: m,
             adapter: a,
@@ -80,7 +78,7 @@ impl Enforcer {
         return e;
     }
 
-    pub fn enforce(&self, rvals: Vec<String>) -> bool {
+    pub fn enforce(&self, rvals: Vec<&str>) -> bool {
         let mut engine = Engine::new();
         let mut scope: Scope = Vec::new(); // rhai的作用域，保存求值需要用到的变量
                                            // let mut r_tokens: HashMap<String, usize> = HashMap::new();
@@ -95,12 +93,11 @@ impl Enforcer {
             .iter()
             .enumerate()
         {
-            let scopeExp = format!("let {} = \"{}\";", token.clone(), rvals[i]);
+            let scope_exp = format!("let {} = \"{}\";", token.clone(), rvals[i]);
             engine
-                .eval_with_scope::<()>(&mut scope, scopeExp.as_str())
+                .eval_with_scope::<()>(&mut scope, scope_exp.as_str())
                 .expect("set rtoken scope failed");
         }
-        // 准备从字符串求值一个表达式
 
         for (key, func) in self.fm.iter() {
             engine.register_fn(key.as_str(), func.clone());
@@ -122,7 +119,6 @@ impl Enforcer {
             .value
             .clone();
         let mut policy_effects: Vec<EffectKind> = vec![];
-        let mut matcher_results: Vec<f64> = vec![];
         let policy_len = self
             .model
             .model
@@ -182,9 +178,9 @@ impl Enforcer {
                     .iter()
                     .enumerate()
                 {
-                    let scopeExp = format!("let {} = \"{}\";", token.clone(), pvals[i]);
+                    let scope_exp = format!("let {} = \"{}\";", token.clone(), pvals[i]);
                     engine
-                        .eval_with_scope::<()>(&mut scope, scopeExp.as_str())
+                        .eval_with_scope::<()>(&mut scope, scope_exp.as_str())
                         .expect("set ptoken scope failed");
                 }
 
@@ -195,10 +191,36 @@ impl Enforcer {
                     policy_effects[i] = EffectKind::Indeterminate;
                     continue;
                 }
-                // TODO: p_tokens check
+                if let Some(j) = self
+                    .model
+                    .model
+                    .get("p")
+                    .unwrap()
+                    .get("p")
+                    .unwrap()
+                    .tokens
+                    .iter()
+                    .position(|x| x == &String::from("p_eft"))
+                {
+                    let eft = &pvals[j];
+                    if eft == "allow" {
+                        policy_effects[i] = EffectKind::Allow;
+                    } else if eft == "deny" {
+                        policy_effects[i] = EffectKind::Deny;
+                    } else {
+                        policy_effects[i] = EffectKind::Indeterminate;
+                    }
+                } else {
+                    policy_effects[i] = EffectKind::Allow;
+                }
+                if self.model.model.get("e").unwrap().get("e").unwrap().value
+                    == "priority(p_eft) || deny"
+                {
+                    break;
+                }
             }
         } else {
-            for (i, token) in self
+            for token in self
                 .model
                 .model
                 .get("p")
@@ -207,11 +229,10 @@ impl Enforcer {
                 .unwrap()
                 .tokens
                 .iter()
-                .enumerate()
             {
-                let scopeExp = format!("let {} = \"{}\";", token.clone(), "");
+                let scope_exp = format!("let {} = \"{}\";", token.clone(), "");
                 engine
-                    .eval_with_scope::<()>(&mut scope, scopeExp.as_str())
+                    .eval_with_scope::<()>(&mut scope, scope_exp.as_str())
                     .expect("set ptoken in else scope failed");
             }
             let eval_result = engine
@@ -224,7 +245,6 @@ impl Enforcer {
             }
         }
 
-        // TODO: final result
         let ee = self
             .model
             .model
@@ -234,8 +254,7 @@ impl Enforcer {
             .unwrap()
             .value
             .clone();
-        let final_result = self.eft.merge_effects(ee, policy_effects, matcher_results);
-        return final_result;
+        return self.eft.merge_effects(ee, policy_effects, vec![]);
     }
 }
 
@@ -261,35 +280,19 @@ mod tests {
         let enforcer = Enforcer::new(m, adapter);
         assert_eq!(
             true,
-            enforcer.enforce(vec![
-                "alice".to_owned(),
-                "/alice_data/resource1".to_owned(),
-                "GET".to_owned()
-            ])
+            enforcer.enforce(vec!["alice", "/alice_data/resource1", "GET"])
         );
         assert_eq!(
             true,
-            enforcer.enforce(vec![
-                "alice".to_owned(),
-                "/alice_data/resource1".to_owned(),
-                "POST".to_owned()
-            ])
+            enforcer.enforce(vec!["alice", "/alice_data/resource1", "POST"])
         );
         assert_eq!(
             true,
-            enforcer.enforce(vec![
-                "alice".to_owned(),
-                "/alice_data/resource2".to_owned(),
-                "GET".to_owned()
-            ])
+            enforcer.enforce(vec!["alice", "/alice_data/resource2", "GET"])
         );
         assert_eq!(
             false,
-            enforcer.enforce(vec![
-                "alice".to_owned(),
-                "/alice_data/resource2".to_owned(),
-                "POST".to_owned()
-            ])
+            enforcer.enforce(vec!["alice", "/alice_data/resource2", "POST"])
         );
     }
 }

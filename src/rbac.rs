@@ -1,16 +1,16 @@
 pub trait RoleManager {
     fn clear(&mut self);
-    fn add_link(&mut self, name1: String, name2: String, domain: Option<Vec<String>>);
-    fn delete_link(&mut self, name1: String, name2: String, domain: Option<Vec<String>>);
-    fn has_link(&self, name1: String, name2: String, domain: Option<Vec<String>>) -> bool;
-    fn get_roles(&self, name: String, domain: Option<Vec<String>>) -> Vec<String>;
-    fn get_users(&self, name: String, domain: Option<Vec<String>>) -> Vec<String>;
+    fn add_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>);
+    fn delete_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>);
+    fn has_link(&self, name1: &str, name2: &str, domain: Vec<&str>) -> bool;
+    fn get_roles(&self, name: &str, domain: Vec<&str>) -> Vec<&str>;
+    fn get_users(&self, name: &str, domain: Vec<&str>) -> Vec<&str>;
     fn print_roles(&self);
 }
 
 use std::collections::HashMap;
 
-type MatchingFunc = fn(String, String) -> bool;
+type MatchingFunc = fn(&str, &str) -> bool;
 
 #[derive(Clone)]
 pub struct DefaultRoleManager {
@@ -30,69 +30,63 @@ impl DefaultRoleManager {
         };
     }
 
-    fn create_role(&mut self, name: String) -> Role {
+    fn create_role(&mut self, name: &str) -> Role {
         // TODO: 加上 has_pattern 判断
         let role = self
             .all_roles
-            .entry(name.clone())
-            .or_insert(Role::new(name.clone()))
+            .entry(name.to_owned())
+            .or_insert(Role::new(name.to_owned()))
             .clone();
         return role;
     }
 
-    fn has_role(&self, name: String, hierarchyLevel: Option<usize>) -> bool {
+    fn has_role(&self, name: &str, hierarchy_level: Option<usize>) -> bool {
         // TODO: 添加完整实现
         return true;
     }
 }
 
 impl RoleManager for DefaultRoleManager {
-    fn add_link(&mut self, name1: String, name2: String, domain: Option<Vec<String>>) {
-        let mut name1 = name1;
-        let mut name2 = name2;
-        if !domain.is_none() {
-            let domain = domain.unwrap();
-            if domain.len() == 1 {
-                name1 = format!("{}::{}", domain[0], name1);
-                name2 = format!("{}::{}", domain[0], name2);
-            } else if domain.len() > 1 {
-                panic!("error domain length");
-            }
+    fn add_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>) {
+        let mut name1 = name1.to_owned();
+        let mut name2 = name2.to_owned();
+        if domain.len() == 1 {
+            name1 = format!("{}::{}", domain[0], name1);
+            name2 = format!("{}::{}", domain[0], name2);
+        } else if domain.len() > 1 {
+            panic!("error domain length");
         }
-        let mut role1 = self.create_role(name1);
-        let role2 = self.create_role(name2);
+        let mut role1 = self.create_role(name1.as_str());
+        let role2 = self.create_role(name2.as_str());
         role1.add_role(role2);
     }
 
-    fn delete_link(&mut self, name1: String, name2: String, domain: Option<Vec<String>>) {
-        let mut name1 = name1;
-        let mut name2 = name2;
-        if !domain.is_none() {
-            let domain = domain.unwrap();
-            if domain.len() == 1 {
-                name1 = format!("{}::{}", domain[0], name1);
-                name2 = format!("{}::{}", domain[0], name2);
-            } else if domain.len() > 1 {
-                panic!("error domain length");
-            }
+    fn delete_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>) {
+        let mut name1 = name1.to_owned();
+        let mut name2 = name2.to_owned();
+        if domain.len() == 1 {
+            name1 = format!("{}::{}", domain[0], name1);
+            name2 = format!("{}::{}", domain[0], name2);
+        } else if domain.len() > 1 {
+            panic!("error domain length");
         }
-        if !self.has_role(name1.clone(), None) || !self.has_role(name2.clone(), None) {
+        if !self.has_role(&name1, None) || !self.has_role(&name2, None) {
             panic!("name12 error");
         }
-        let mut role1 = self.create_role(name1.clone());
-        let role2 = self.create_role(name2.clone());
+        let mut role1 = self.create_role(&name1);
+        let role2 = self.create_role(&name2);
         role1.delete_role(role2);
     }
 
-    fn has_link(&self, name1: String, name2: String, domain: Option<Vec<String>>) -> bool {
+    fn has_link(&self, name1: &str, name2: &str, domain: Vec<&str>) -> bool {
         return true;
     }
 
-    fn get_roles(&self, name: String, domain: Option<Vec<String>>) -> Vec<String> {
+    fn get_roles(&self, name: &str, domain: Vec<&str>) -> Vec<&str> {
         return vec![];
     }
 
-    fn get_users(&self, name: String, domain: Option<Vec<String>>) -> Vec<String> {
+    fn get_users(&self, name: &str, domain: Vec<&str>) -> Vec<&str> {
         return vec![];
     }
 

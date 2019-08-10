@@ -41,22 +41,13 @@ impl Assertion {
                 panic!("grouping policy elements do not meet role definition")
             }
             if count == 2 {
-                rm.add_link(rule[0].clone(), rule[1].clone(), None);
+                rm.add_link(&rule[0], &rule[1], vec![]);
             } else if count == 3 {
-                rm.add_link(
-                    rule[0].clone(),
-                    rule[1].clone(),
-                    Some(vec![rule[2].clone()]),
-                );
+                rm.add_link(&rule[0], &rule[1], vec![&rule[2]]);
             } else if count == 4 {
-                rm.add_link(
-                    rule[0].clone(),
-                    rule[1].clone(),
-                    Some(vec![rule[2].clone(), rule[3].clone()]),
-                );
+                rm.add_link(&rule[0], &rule[1], vec![&rule[2], &rule[3]]);
             }
         }
-        // return self.rm.print_roles();
         self.rm = rm;
     }
 }
@@ -127,12 +118,6 @@ pub fn key_match(key1: String, key2: String) -> bool {
     }
 }
 
-fn key_match_func(args: Vec<String>) -> bool {
-    let name1 = args[0].clone();
-    let name2 = args[1].clone();
-    return key_match(name1, name2);
-}
-
 fn key_match2(key1: String, key2: String) -> bool {
     let mut key2 = key2.replace("/*", "/.*");
     let re = Regex::new("(.*):[^/]+(.*)").unwrap();
@@ -143,12 +128,6 @@ fn key_match2(key1: String, key2: String) -> bool {
         key2 = re.replace_all(key2.as_str(), "$1[^/]+$2").to_string();
     }
     return regex_match(key1, format!("^{}$", key2));
-}
-
-fn key_match2_func(args: Vec<String>) -> bool {
-    let name1 = args[0].clone();
-    let name2 = args[1].clone();
-    return key_match2(name1, name2);
 }
 
 // fn key_match3(key1: String, key2: String) -> bool {
@@ -174,19 +153,19 @@ pub fn regex_match(key1: String, key2: String) -> bool {
     return Regex::new(key2.as_str()).unwrap().is_match(key1.as_str());
 }
 
-fn regex_match_func(args: Vec<String>) -> bool {
-    let name1 = args[0].clone();
-    let name2 = args[1].clone();
-    return regex_match(name1, name2);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_match() {
-        assert_eq!(true, key_match("/alice_data/resource1".to_owned(), "/alice_data/*".to_owned()));
+        assert_eq!(
+            true,
+            key_match(
+                "/alice_data/resource1".to_owned(),
+                "/alice_data/*".to_owned()
+            )
+        );
         assert_eq!(true, key_match("GET".to_owned(), "GET".to_owned()));
     }
 }

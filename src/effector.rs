@@ -13,6 +13,7 @@ pub enum EffectKind {
 pub struct DefaultEffector {}
 
 // TODO: 错误处理
+// TODO: results 似乎没必要存在
 impl Effector for DefaultEffector {
     fn merge_effects(&self, expr: String, effects: Vec<EffectKind>, results: Vec<f64>) -> bool {
         let mut result = false;

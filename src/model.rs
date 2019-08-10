@@ -1,6 +1,13 @@
-use crate::rbac::RoleManager;
+use crate::rbac::{DefaultRoleManager, RoleManager};
 use regex::Regex;
 use std::collections::HashMap;
+
+fn escape_assertion(s: String) -> String {
+    let mut s = s;
+    // TODO: 要按照正则来替换
+    s = s.replacen(".", "_", 100);
+    return s;
+}
 
 type AssertionMap = HashMap<String, Assertion>;
 
@@ -9,7 +16,7 @@ pub struct Assertion {
     pub value: String,
     pub tokens: Vec<String>,
     pub policy: Vec<Vec<String>>,
-    pub rm: Option<Box<RoleManager>>,
+    pub rm: DefaultRoleManager,
 }
 
 impl Assertion {
@@ -19,12 +26,12 @@ impl Assertion {
             value: String::new(),
             tokens: vec![],
             policy: vec![],
-            rm: None,
+            rm: DefaultRoleManager::new(0),
         };
     }
 
     // TODO: error handling
-    pub fn build_role_links(&mut self, mut rm: Box<RoleManager>) {
+    pub fn build_role_links(&mut self, mut rm: DefaultRoleManager) {
         let count = self.value.chars().filter(|&c| c == '_').count();
         if count < 2 {
             panic!("the number of \"_\" in role definition should be at least 2")
@@ -50,7 +57,7 @@ impl Assertion {
             }
         }
         // return self.rm.print_roles();
-        self.rm = Some(rm);
+        self.rm = rm;
     }
 }
 
@@ -82,14 +89,16 @@ impl Model {
                 ast.tokens[i] = format!("{}_{}", key.clone(), ast.tokens[i]);
             }
         } else {
-            ast.value = String::from("TO BE DONE, remove comments"); // TODO
+            // 先做正则，把点号替换掉
+            ast.value = escape_assertion(ast.value);
         }
 
         // 从model取sec
         if let Some(new_model) = self.model.get_mut(sec) {
             new_model.insert(key.to_owned(), ast);
         } else {
-            let new_ast_map = HashMap::new();
+            let mut new_ast_map = HashMap::new();
+            new_ast_map.insert(key.to_owned(), ast);
             self.model.insert(sec.to_owned(), new_ast_map);
         }
 
@@ -97,13 +106,13 @@ impl Model {
     }
 }
 
-pub type FunctionMap = HashMap<String, fn(Option<Vec<String>>) -> bool>;
+pub type FunctionMap = HashMap<String, fn(String, String) -> bool>;
 
 pub fn load_function_map() -> FunctionMap {
-    let mut fm: HashMap<String, fn(Option<Vec<String>>) -> bool> = HashMap::new();
-    fm.insert("keyMatch".to_owned(), key_match_func);
-    fm.insert("keyMatch2".to_owned(), key_match2_func);
-    fm.insert("regexMatch".to_owned(), regex_match_func);
+    let mut fm: HashMap<String, fn(String, String) -> bool> = HashMap::new();
+    fm.insert("keyMatch".to_owned(), key_match);
+    fm.insert("keyMatch2".to_owned(), key_match2);
+    fm.insert("regexMatch".to_owned(), regex_match);
     return fm;
 }
 
@@ -118,8 +127,7 @@ fn key_match(key1: String, key2: String) -> bool {
     }
 }
 
-fn key_match_func(args: Option<Vec<String>>) -> bool {
-    let args = args.unwrap();
+fn key_match_func(args: Vec<String>) -> bool {
     let name1 = args[0].clone();
     let name2 = args[1].clone();
     return key_match(name1, name2);
@@ -137,8 +145,7 @@ fn key_match2(key1: String, key2: String) -> bool {
     return regex_match(key1, format!("^{}$", key2));
 }
 
-fn key_match2_func(args: Option<Vec<String>>) -> bool {
-    let args = args.unwrap();
+fn key_match2_func(args: Vec<String>) -> bool {
     let name1 = args[0].clone();
     let name2 = args[1].clone();
     return key_match2(name1, name2);
@@ -156,7 +163,7 @@ fn key_match2_func(args: Option<Vec<String>>) -> bool {
 //     return regex_match(key1, format!("^{}$", key2));
 // }
 
-// fn key_match3_func(args: Option<Vec<String>>) -> bool {
+// fn key_match3_func(args: Vec<String>) -> bool {
 //     let args = args.unwrap();
 //     let name1 = args[0].clone();
 //     let name2 = args[1].clone();
@@ -167,8 +174,7 @@ fn regex_match(key1: String, key2: String) -> bool {
     return Regex::new(key2.as_str()).unwrap().is_match(key1.as_str());
 }
 
-fn regex_match_func(args: Option<Vec<String>>) -> bool {
-    let args = args.unwrap();
+fn regex_match_func(args: Vec<String>) -> bool {
     let name1 = args[0].clone();
     let name2 = args[1].clone();
     return regex_match(name1, name2);

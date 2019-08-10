@@ -3,6 +3,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 
 use crate::model::Model;
+use crate::rbac::RoleManager;
 
 pub trait Adapter {
     // 实现数据操作的方法，默认是file adapter

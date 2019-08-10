@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 type MatchingFunc = fn(String, String) -> bool;
 
+#[derive(Clone)]
 pub struct DefaultRoleManager {
     pub all_roles: HashMap<String, Role>,
     pub max_hierarchy_level: usize,

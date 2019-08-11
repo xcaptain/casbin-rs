@@ -264,7 +264,7 @@ mod tests {
     use crate::adapter::FileAdapter;
 
     #[test]
-    fn test_enforcer() {
+    fn test_key_match_in_memory() {
         let mut m = Model::new();
         m.add_def("r", "r", "sub, obj, act");
         m.add_def("p", "p", "sub, obj, act");
@@ -276,7 +276,6 @@ mod tests {
         );
 
         let adapter = FileAdapter::new("examples/keymatch_policy.csv");
-
         let enforcer = Enforcer::new(m, adapter);
         assert_eq!(
             true,
@@ -293,6 +292,82 @@ mod tests {
         assert_eq!(
             false,
             enforcer.enforce(vec!["alice", "/alice_data/resource2", "POST"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["alice", "/bob_data/resource1", "GET"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["alice", "/bob_data/resource1", "POST"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["alice", "/bob_data/resource2", "GET"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["alice", "/bob_data/resource2", "POST"])
+        );
+
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["bob", "/alice_data/resource1", "GET"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["bob", "/alice_data/resource1", "POST"])
+        );
+        assert_eq!(
+            true,
+            enforcer.enforce(vec!["bob", "/alice_data/resource2", "GET"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["bob", "/alice_data/resource2", "POST"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["bob", "/bob_data/resource1", "GET"])
+        );
+        assert_eq!(
+            true,
+            enforcer.enforce(vec!["bob", "/bob_data/resource1", "POST"])
+        );
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["bob", "/bob_data/resource2", "GET"])
+        );
+        assert_eq!(
+            true,
+            enforcer.enforce(vec!["bob", "/bob_data/resource2", "POST"])
+        );
+
+        assert_eq!(true, enforcer.enforce(vec!["cathy", "/cathy_data", "GET"]));
+        assert_eq!(true, enforcer.enforce(vec!["cathy", "/cathy_data", "POST"]));
+        assert_eq!(
+            false,
+            enforcer.enforce(vec!["cathy", "/cathy_data", "DELETE"])
+        );
+    }
+
+    #[test]
+    fn test_key_match_model_in_memory_deny() {
+        let mut m = Model::new();
+        m.add_def("r", "r", "sub, obj, act");
+        m.add_def("p", "p", "sub, obj, act");
+        m.add_def("e", "e", "!some(where (p.eft == deny))");
+        m.add_def(
+            "m",
+            "m",
+            "r.sub == p.sub && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)",
+        );
+
+        let adapter = FileAdapter::new("examples/keymatch_policy.csv");
+        let enforcer = Enforcer::new(m, adapter);
+        assert_eq!(
+            true,
+            enforcer.enforce(vec!["alice", "/alice_data/resource2", "POST",])
         );
     }
 }

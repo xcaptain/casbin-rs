@@ -13,4 +13,8 @@ cargo test
 ## TODO
 
 - [x] 基本的匹配功能
+- [ ] 从conf文件中创建model
 - [ ] rbac匹配
+- [ ] 错误处理
+- [ ] Enforcer中role manager, effector, adapter做成trait
+- [ ] 一个postgresql的adapter

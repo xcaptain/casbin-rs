@@ -1,9 +1,8 @@
-use crate::adapter::{Adapter, FileAdapter};
+use crate::adapter::Adapter;
 use crate::effector::{DefaultEffector, EffectKind, Effector};
 use crate::model::Model;
 use crate::model::{load_function_map, FunctionMap};
 use crate::rbac::{DefaultRoleManager, RoleManager};
-use std::collections::HashMap;
 
 use rhai::{Engine, FnRegister, Scope};
 
@@ -26,7 +25,6 @@ impl Clone for Box<dyn MatchFnClone> {
     }
 }
 
-// 至少长度为2
 pub fn generate_g_function(rm: DefaultRoleManager) -> Box<dyn MatchFnClone> {
     let cb = move |args: Vec<&str>| -> bool {
         let name1 = args[0].clone();
@@ -42,26 +40,17 @@ pub fn generate_g_function(rm: DefaultRoleManager) -> Box<dyn MatchFnClone> {
     return Box::new(cb);
 }
 
-#[derive(Default)]
-pub struct EnforceParameters {
-    pub r_tokens: HashMap<String, usize>,
-    pub r_vals: Vec<String>,
-
-    pub p_tokens: HashMap<String, usize>,
-    pub p_vals: Vec<String>,
-}
-
 // TODO: should implement a default role manager later
-pub struct Enforcer {
+pub struct Enforcer<A: Adapter, E: Effector> {
     pub model: Model,
-    pub adapter: FileAdapter,
+    pub adapter: A,
     pub fm: FunctionMap,
-    pub eft: DefaultEffector,
+    pub eft: E,
     pub rm: DefaultRoleManager,
 }
 
-impl Enforcer {
-    pub fn new(m: Model, a: FileAdapter) -> Self {
+impl<A: Adapter, E: Effector> Enforcer<A, E> {
+    pub fn new(m: Model, a: A) -> Self {
         let mut m = m;
         let fm = load_function_map();
         let eft = DefaultEffector::default();
@@ -81,7 +70,6 @@ impl Enforcer {
     pub fn enforce(&self, rvals: Vec<&str>) -> bool {
         let mut engine = Engine::new();
         let mut scope: Scope = Vec::new(); // rhai的作用域，保存求值需要用到的变量
-                                           // let mut r_tokens: HashMap<String, usize> = HashMap::new();
         for (i, token) in self
             .model
             .model
@@ -264,7 +252,7 @@ mod tests {
     use crate::adapter::FileAdapter;
 
     #[test]
-    fn test_key_match_in_memory() {
+    fn test_key_match_model_in_memory() {
         let mut m = Model::new();
         m.add_def("r", "r", "sub, obj, act");
         m.add_def("p", "p", "sub, obj, act");
@@ -276,79 +264,61 @@ mod tests {
         );
 
         let adapter = FileAdapter::new("examples/keymatch_policy.csv");
-        let enforcer = Enforcer::new(m, adapter);
+        let e = Enforcer::new(m, adapter);
         assert_eq!(
             true,
-            enforcer.enforce(vec!["alice", "/alice_data/resource1", "GET"])
-        );
-        assert_eq!(
-            true,
-            enforcer.enforce(vec!["alice", "/alice_data/resource1", "POST"])
+            e.enforce(vec!["alice", "/alice_data/resource1", "GET"])
         );
         assert_eq!(
             true,
-            enforcer.enforce(vec!["alice", "/alice_data/resource2", "GET"])
+            e.enforce(vec!["alice", "/alice_data/resource1", "POST"])
+        );
+        assert_eq!(
+            true,
+            e.enforce(vec!["alice", "/alice_data/resource2", "GET"])
         );
         assert_eq!(
             false,
-            enforcer.enforce(vec!["alice", "/alice_data/resource2", "POST"])
+            e.enforce(vec!["alice", "/alice_data/resource2", "POST"])
         );
         assert_eq!(
             false,
-            enforcer.enforce(vec!["alice", "/bob_data/resource1", "GET"])
+            e.enforce(vec!["alice", "/bob_data/resource1", "GET"])
         );
         assert_eq!(
             false,
-            enforcer.enforce(vec!["alice", "/bob_data/resource1", "POST"])
+            e.enforce(vec!["alice", "/bob_data/resource1", "POST"])
         );
         assert_eq!(
             false,
-            enforcer.enforce(vec!["alice", "/bob_data/resource2", "GET"])
+            e.enforce(vec!["alice", "/bob_data/resource2", "GET"])
         );
         assert_eq!(
             false,
-            enforcer.enforce(vec!["alice", "/bob_data/resource2", "POST"])
+            e.enforce(vec!["alice", "/bob_data/resource2", "POST"])
         );
 
         assert_eq!(
             false,
-            enforcer.enforce(vec!["bob", "/alice_data/resource1", "GET"])
+            e.enforce(vec!["bob", "/alice_data/resource1", "GET"])
         );
         assert_eq!(
             false,
-            enforcer.enforce(vec!["bob", "/alice_data/resource1", "POST"])
+            e.enforce(vec!["bob", "/alice_data/resource1", "POST"])
         );
-        assert_eq!(
-            true,
-            enforcer.enforce(vec!["bob", "/alice_data/resource2", "GET"])
-        );
+        assert_eq!(true, e.enforce(vec!["bob", "/alice_data/resource2", "GET"]));
         assert_eq!(
             false,
-            enforcer.enforce(vec!["bob", "/alice_data/resource2", "POST"])
+            e.enforce(vec!["bob", "/alice_data/resource2", "POST"])
         );
-        assert_eq!(
-            false,
-            enforcer.enforce(vec!["bob", "/bob_data/resource1", "GET"])
-        );
-        assert_eq!(
-            true,
-            enforcer.enforce(vec!["bob", "/bob_data/resource1", "POST"])
-        );
-        assert_eq!(
-            false,
-            enforcer.enforce(vec!["bob", "/bob_data/resource2", "GET"])
-        );
-        assert_eq!(
-            true,
-            enforcer.enforce(vec!["bob", "/bob_data/resource2", "POST"])
-        );
+        assert_eq!(false, e.enforce(vec!["bob", "/bob_data/resource1", "GET"]));
+        assert_eq!(true, e.enforce(vec!["bob", "/bob_data/resource1", "POST"]));
+        assert_eq!(false, e.enforce(vec!["bob", "/bob_data/resource2", "GET"]));
+        assert_eq!(true, e.enforce(vec!["bob", "/bob_data/resource2", "POST"]));
 
-        assert_eq!(true, enforcer.enforce(vec!["cathy", "/cathy_data", "GET"]));
-        assert_eq!(true, enforcer.enforce(vec!["cathy", "/cathy_data", "POST"]));
-        assert_eq!(
-            false,
-            enforcer.enforce(vec!["cathy", "/cathy_data", "DELETE"])
-        );
+        assert_eq!(true, e.enforce(vec!["cathy", "/cathy_data", "GET"]));
+        assert_eq!(true, e.enforce(vec!["cathy", "/cathy_data", "POST"]));
+        assert_eq!(false, e.enforce(vec!["cathy", "/cathy_data", "DELETE"]));
     }
 
     #[test]
@@ -364,10 +334,28 @@ mod tests {
         );
 
         let adapter = FileAdapter::new("examples/keymatch_policy.csv");
-        let enforcer = Enforcer::new(m, adapter);
+        let e = Enforcer::new(m, adapter);
         assert_eq!(
             true,
-            enforcer.enforce(vec!["alice", "/alice_data/resource2", "POST",])
+            e.enforce(vec!["alice", "/alice_data/resource2", "POST"])
         );
     }
+
+    // #[test]
+    // fn test_rbac_model_in_memory_indeterminate() {
+    //     let mut m = Model::new();
+    //     m.add_def("r", "r", "sub, obj, act");
+    //     m.add_def("p", "p", "sub, obj, act");
+    //     m.add_def("g", "g", "_, _");
+    //     m.add_def("e", "e", "some(where (p.eft == allow))");
+    //     m.add_def(
+    //         "m",
+    //         "m",
+    //         "g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act",
+    //     );
+
+    //     let e = Enforcer::new(m);
+    //     e.add_permission_for_user("alice", "data1", "invalid");
+    //     assert_eq!(false, e.enforce(vec!["alice", "data1", "read"]));
+    // }
 }

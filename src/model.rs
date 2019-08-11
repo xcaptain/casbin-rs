@@ -95,6 +95,16 @@ impl Model {
 
         return true;
     }
+
+    pub fn add_policy(&mut self, sec: &str, ptype: &str, rule: Vec<&str>) -> bool {
+        if let Some(t1) = self.model.get_mut(sec) {
+            if let Some(t2) = t1.get_mut(ptype) {
+                t2.policy.push(rule.into_iter().map(String::from).collect());
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 pub type FunctionMap = HashMap<String, fn(String, String) -> bool>;

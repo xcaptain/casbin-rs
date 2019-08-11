@@ -6,13 +6,13 @@ use crate::rbac::{DefaultRoleManager, RoleManager};
 
 use rhai::{Engine, FnRegister, Scope};
 
-pub trait MatchFnClone: Fn(Vec<&str>) -> bool {
+pub trait MatchFnClone: Fn(String, String) -> bool {
     fn clone_box(&self) -> Box<dyn MatchFnClone>;
 }
 
 impl<T> MatchFnClone for T
 where
-    T: 'static + Fn(Vec<&str>) -> bool + Clone,
+    T: 'static + Fn(String, String) -> bool + Clone,
 {
     fn clone_box(&self) -> Box<dyn MatchFnClone> {
         Box::new(self.clone())
@@ -25,35 +25,29 @@ impl Clone for Box<dyn MatchFnClone> {
     }
 }
 
+// TODO: rhai目前暂时不支持数组参数和变参，所以返回的g函数暂时只接受2个字符串
+// rbac_with_domains_model.conf 只有在这个场景会用到第三个参数
 pub fn generate_g_function(rm: DefaultRoleManager) -> Box<dyn MatchFnClone> {
-    let cb = move |args: Vec<&str>| -> bool {
-        let name1 = args[0].clone();
-        let name2 = args[1].clone();
-
-        if args.len() == 2 {
-            return rm.has_link(name1, name2, vec![]);
-        } else {
-            let domain = args[2].clone();
-            return rm.has_link(name1, name2, vec![domain]);
-        }
+    let cb = move |name1: String, name2: String| -> bool {
+        return rm.has_link(name1.as_str(), name2.as_str(), vec![]);
     };
     return Box::new(cb);
 }
 
 // TODO: should implement a default role manager later
-pub struct Enforcer<A: Adapter, E: Effector> {
+pub struct Enforcer<A: Adapter> {
     pub model: Model,
     pub adapter: A,
     pub fm: FunctionMap,
-    pub eft: E,
+    pub eft: Box<dyn Effector>,
     pub rm: DefaultRoleManager,
 }
 
-impl<A: Adapter, E: Effector> Enforcer<A, E> {
+impl<A: Adapter> Enforcer<A> {
     pub fn new(m: Model, a: A) -> Self {
         let mut m = m;
         let fm = load_function_map();
-        let eft = DefaultEffector::default();
+        let eft = Box::new(DefaultEffector::default());
         let rm = DefaultRoleManager::new(10);
         a.load_policy(&mut m);
         let e = Self {
@@ -69,7 +63,7 @@ impl<A: Adapter, E: Effector> Enforcer<A, E> {
 
     pub fn enforce(&self, rvals: Vec<&str>) -> bool {
         let mut engine = Engine::new();
-        let mut scope: Scope = Vec::new(); // rhai的作用域，保存求值需要用到的变量
+        let mut scope: Scope = Vec::new();
         for (i, token) in self
             .model
             .model
@@ -81,6 +75,7 @@ impl<A: Adapter, E: Effector> Enforcer<A, E> {
             .iter()
             .enumerate()
         {
+            // let r_sub = "alice"; or let r_obj = "resource1"; or let r_sub = "GET";
             let scope_exp = format!("let {} = \"{}\";", token.clone(), rvals[i]);
             engine
                 .eval_with_scope::<()>(&mut scope, scope_exp.as_str())
@@ -166,6 +161,7 @@ impl<A: Adapter, E: Effector> Enforcer<A, E> {
                     .iter()
                     .enumerate()
                 {
+                    // let p_sub = "alice"; or let p_obj = "resource1"; or let p_sub = "GET";
                     let scope_exp = format!("let {} = \"{}\";", token.clone(), pvals[i]);
                     engine
                         .eval_with_scope::<()>(&mut scope, scope_exp.as_str())
@@ -249,7 +245,7 @@ impl<A: Adapter, E: Effector> Enforcer<A, E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapter::FileAdapter;
+    use crate::adapter::{FileAdapter, MemoryAdapter};
 
     #[test]
     fn test_key_match_model_in_memory() {
@@ -341,21 +337,23 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_rbac_model_in_memory_indeterminate() {
-    //     let mut m = Model::new();
-    //     m.add_def("r", "r", "sub, obj, act");
-    //     m.add_def("p", "p", "sub, obj, act");
-    //     m.add_def("g", "g", "_, _");
-    //     m.add_def("e", "e", "some(where (p.eft == allow))");
-    //     m.add_def(
-    //         "m",
-    //         "m",
-    //         "g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act",
-    //     );
+    use crate::enforcer_api::RbacApi;
+    #[test]
+    fn test_rbac_model_in_memory_indeterminate() {
+        let mut m = Model::new();
+        m.add_def("r", "r", "sub, obj, act");
+        m.add_def("p", "p", "sub, obj, act");
+        m.add_def("g", "g", "_, _");
+        m.add_def("e", "e", "some(where (p.eft == allow))");
+        m.add_def(
+            "m",
+            "m",
+            "g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act",
+        );
 
-    //     let e = Enforcer::new(m);
-    //     e.add_permission_for_user("alice", "data1", "invalid");
-    //     assert_eq!(false, e.enforce(vec!["alice", "data1", "read"]));
-    // }
+        let adapter = MemoryAdapter::default();
+        let mut e = Enforcer::new(m, adapter);
+        e.add_permission_for_user("alice", vec!["data1", "invalid"]);
+        assert_eq!(false, e.enforce(vec!["alice", "data1", "read"]));
+    }
 }

@@ -2,7 +2,7 @@ pub trait RoleManager {
     fn clear(&mut self);
     fn add_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>);
     fn delete_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>);
-    fn has_link(&self, name1: &str, name2: &str, domain: Vec<&str>) -> bool;
+    fn has_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>) -> bool;
     fn get_roles(&self, name: &str, domain: Vec<&str>) -> Vec<&str>;
     fn get_users(&self, name: &str, domain: Vec<&str>) -> Vec<&str>;
     fn print_roles(&self);
@@ -31,18 +31,18 @@ impl DefaultRoleManager {
     }
 
     fn create_role(&mut self, name: &str) -> Role {
-        // TODO: 加上 has_pattern 判断
-        let role = self
+        return self
             .all_roles
             .entry(name.to_owned())
             .or_insert(Role::new(name.to_owned()))
             .clone();
-        return role;
     }
 
-    fn has_role(&self, name: &str, hierarchy_level: Option<usize>) -> bool {
-        // TODO: 添加完整实现
-        return true;
+    fn has_role(&self, name: &str) -> bool {
+        if let Some(_role) = self.all_roles.get(name) {
+            return true;
+        }
+        return false;
     }
 }
 
@@ -59,6 +59,10 @@ impl RoleManager for DefaultRoleManager {
         let mut role1 = self.create_role(name1.as_str());
         let role2 = self.create_role(name2.as_str());
         role1.add_role(role2);
+        // role1 被修改之后要回写到all_roles中
+        if let Some(old_role) = self.all_roles.get_mut(&role1.name) {
+            *old_role = role1.clone();
+        }
     }
 
     fn delete_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>) {
@@ -70,16 +74,27 @@ impl RoleManager for DefaultRoleManager {
         } else if domain.len() > 1 {
             panic!("error domain length");
         }
-        if !self.has_role(&name1, None) || !self.has_role(&name2, None) {
+        if !self.has_role(&name1) || !self.has_role(&name2) {
             panic!("name12 error");
         }
         let mut role1 = self.create_role(&name1);
         let role2 = self.create_role(&name2);
         role1.delete_role(role2);
+        // role1 被修改之后要回写到all_roles中
+        if let Some(old_role) = self.all_roles.get_mut(&role1.name) {
+            *old_role = role1.clone();
+        }
     }
 
-    fn has_link(&self, name1: &str, name2: &str, domain: Vec<&str>) -> bool {
-        return true;
+    fn has_link(&mut self, name1: &str, name2: &str, _domain: Vec<&str>) -> bool {
+        if name1 == name2 {
+            return true;
+        }
+        if !self.has_role(name1) || !self.has_role(name2) {
+            return false;
+        }
+        let role1 = self.create_role(name1);
+        return role1.has_role(name2, self.max_hierarchy_level);
     }
 
     fn get_roles(&self, name: &str, domain: Vec<&str>) -> Vec<&str> {
@@ -91,19 +106,18 @@ impl RoleManager for DefaultRoleManager {
     }
 
     fn print_roles(&self) {
-        println!("print_roles tbd");
+        println!("current role manager roles: {:?}", self.all_roles.clone());
     }
 
     fn clear(&mut self) {
-        // TODO: 清空当前对象
         self.all_roles = HashMap::new();
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Role {
     pub name: String,
-    pub roles: Vec<Box<Role>>,
+    pub roles: Vec<Role>,
 }
 
 impl Role {
@@ -115,12 +129,12 @@ impl Role {
     }
 
     pub fn add_role(&mut self, other_role: Role) {
-        for old_role in self.roles.iter() {
-            if old_role.name == other_role.name {
+        for role in self.roles.iter() {
+            if role.name == other_role.name {
                 return;
             }
         }
-        self.roles.push(Box::new(other_role));
+        self.roles.push(other_role.clone());
     }
 
     fn delete_role(&mut self, other_role: Role) {
@@ -132,5 +146,20 @@ impl Role {
         {
             self.roles.remove(pos);
         }
+    }
+
+    fn has_role(&self, name: &str, hierarchy_level: usize) -> bool {
+        if self.name == name {
+            return true;
+        }
+        if hierarchy_level <= 0 {
+            return false;
+        }
+        for role in self.roles.iter() {
+            if role.has_role(name, hierarchy_level - 1) {
+                return true;
+            }
+        }
+        return false;
     }
 }

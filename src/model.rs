@@ -30,13 +30,12 @@ impl Assertion {
         };
     }
 
-    // TODO: error handling
-    pub fn build_role_links(&mut self, mut rm: DefaultRoleManager) {
+    pub fn build_role_links(&mut self, rm: &mut DefaultRoleManager) {
         let count = self.value.chars().filter(|&c| c == '_').count();
-        if count < 2 {
-            panic!("the number of \"_\" in role definition should be at least 2")
-        }
         for (_k, rule) in self.policy.iter().enumerate() {
+            if count < 2 {
+                panic!("the number of \"_\" in role definition should be at least 2")
+            }
             if rule.len() < count {
                 panic!("grouping policy elements do not meet role definition")
             }
@@ -48,7 +47,8 @@ impl Assertion {
                 rm.add_link(&rule[0], &rule[1], vec![&rule[2], &rule[3]]);
             }
         }
-        self.rm = rm;
+        self.rm = rm.clone();
+        self.rm.print_roles();
     }
 }
 
@@ -64,7 +64,6 @@ impl Model {
         };
     }
 
-    // TODO: key发生了borrow，可以考虑是否传引用
     pub fn add_def(&mut self, sec: &str, key: &str, value: &str) -> bool {
         let mut ast = Assertion::new();
         ast.key = key.to_owned();
@@ -94,6 +93,13 @@ impl Model {
         }
 
         return true;
+    }
+
+    pub fn build_role_links(&mut self, rm: &mut DefaultRoleManager) {
+        let asts = self.model.get_mut("g").unwrap();
+        for (_key, ast) in asts.iter_mut() {
+            ast.build_role_links(rm);
+        }
     }
 
     pub fn add_policy(&mut self, sec: &str, ptype: &str, rule: Vec<&str>) -> bool {

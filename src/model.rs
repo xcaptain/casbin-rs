@@ -16,7 +16,7 @@ pub struct Assertion {
     pub value: String,
     pub tokens: Vec<String>,
     pub policy: Vec<Vec<String>>,
-    pub rm: DefaultRoleManager,
+    pub rm: Box<dyn RoleManager>,
 }
 
 impl Assertion {
@@ -26,11 +26,11 @@ impl Assertion {
             value: String::new(),
             tokens: vec![],
             policy: vec![],
-            rm: DefaultRoleManager::new(0),
+            rm: Box::new(DefaultRoleManager::new(0)),
         };
     }
 
-    pub fn build_role_links(&mut self, rm: &mut DefaultRoleManager) {
+    pub fn build_role_links(&mut self, rm: &mut Box<dyn RoleManager>) {
         let count = self.value.chars().filter(|&c| c == '_').count();
         for (_k, rule) in self.policy.iter().enumerate() {
             if count < 2 {
@@ -48,7 +48,7 @@ impl Assertion {
             }
         }
         self.rm = rm.clone();
-        self.rm.print_roles();
+        // self.rm.print_roles();
     }
 }
 
@@ -95,7 +95,7 @@ impl Model {
         return true;
     }
 
-    pub fn build_role_links(&mut self, rm: &mut DefaultRoleManager) {
+    pub fn build_role_links(&mut self, rm: &mut Box<dyn RoleManager>) {
         let asts = self.model.get_mut("g").unwrap();
         for (_key, ast) in asts.iter_mut() {
             ast.build_role_links(rm);

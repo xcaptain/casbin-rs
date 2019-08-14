@@ -1,4 +1,5 @@
 pub trait RoleManager {
+    fn clone_box(&self) -> Box<dyn RoleManager>;
     fn clear(&mut self);
     fn add_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>);
     fn delete_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>);
@@ -6,6 +7,12 @@ pub trait RoleManager {
     fn get_roles(&self, name: &str, domain: Vec<&str>) -> Vec<&str>;
     fn get_users(&self, name: &str, domain: Vec<&str>) -> Vec<&str>;
     fn print_roles(&self);
+}
+
+impl Clone for Box<dyn RoleManager> {
+    fn clone(&self) -> Self {
+        (*self).clone_box()
+    }
 }
 
 use std::collections::HashMap;
@@ -47,6 +54,10 @@ impl DefaultRoleManager {
 }
 
 impl RoleManager for DefaultRoleManager {
+    fn clone_box(&self) -> Box<dyn RoleManager> {
+        Box::new(self.clone())
+    }
+
     fn add_link(&mut self, name1: &str, name2: &str, domain: Vec<&str>) {
         let mut name1 = name1.to_owned();
         let mut name2 = name2.to_owned();

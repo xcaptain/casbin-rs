@@ -27,7 +27,7 @@ impl Clone for Box<dyn MatchFnClone> {
 
 // TODO: rhai目前暂时不支持数组参数和变参，所以返回的g函数暂时只接受2个字符串
 // rbac_with_domains_model.conf 只有在这个场景会用到第三个参数
-pub fn generate_g_function(rm: DefaultRoleManager) -> Box<dyn MatchFnClone> {
+pub fn generate_g_function(rm: Box<dyn RoleManager>) -> Box<dyn MatchFnClone> {
     let cb = move |name1: String, name2: String| -> bool {
         let mut rm = rm.clone();
         return rm.has_link(name1.as_str(), name2.as_str(), vec![]);
@@ -35,13 +35,13 @@ pub fn generate_g_function(rm: DefaultRoleManager) -> Box<dyn MatchFnClone> {
     return Box::new(cb);
 }
 
-// TODO: should implement a default role manager later
 pub struct Enforcer<A: Adapter> {
     pub model: Model,
     pub adapter: A,
     pub fm: FunctionMap,
     pub eft: Box<dyn Effector>,
-    pub rm: DefaultRoleManager,
+    // pub rm: DefaultRoleManager,
+    pub rm: Box<dyn RoleManager>
 }
 
 impl<A: Adapter> Enforcer<A> {
@@ -49,7 +49,7 @@ impl<A: Adapter> Enforcer<A> {
         let mut m = m;
         let fm = load_function_map();
         let eft = Box::new(DefaultEffector::default());
-        let rm = DefaultRoleManager::new(10);
+        let rm = Box::new(DefaultRoleManager::new(10));
         a.load_policy(&mut m);
         let e = Self {
             model: m,
@@ -388,6 +388,34 @@ mod tests {
         assert_eq!(false, e.enforce(vec!["alice", "data1", "write"]));
         assert_eq!(true, e.enforce(vec!["alice", "data2", "read"]));
         assert_eq!(true, e.enforce(vec!["alice", "data2", "write"]));
+        assert_eq!(false, e.enforce(vec!["bob", "data1", "read"]));
+        assert_eq!(false, e.enforce(vec!["bob", "data1", "write"]));
+        assert_eq!(false, e.enforce(vec!["bob", "data2", "read"]));
+        assert_eq!(true, e.enforce(vec!["bob", "data2", "write"]));
+    }
+
+    #[test]
+    fn test_not_used_rbac_model_in_memory() {
+        let mut m = Model::new();
+        m.add_def("r", "r", "sub, obj, act");
+        m.add_def("p", "p", "sub, obj, act");
+        m.add_def("g", "g", "_, _");
+        m.add_def("e", "e", "some(where (p.eft == allow))");
+        m.add_def(
+            "m",
+            "m",
+            "g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act",
+        );
+
+        let adapter = MemoryAdapter::default();
+        let mut e = Enforcer::new(m, adapter);
+        e.add_permission_for_user("alice", vec!["data1", "read"]);
+        e.add_permission_for_user("bob", vec!["data2", "write"]);
+
+        assert_eq!(true, e.enforce(vec!["alice", "data1", "read"]));
+        assert_eq!(false, e.enforce(vec!["alice", "data1", "write"]));
+        assert_eq!(false, e.enforce(vec!["alice", "data2", "read"]));
+        assert_eq!(false, e.enforce(vec!["alice", "data2", "write"]));
         assert_eq!(false, e.enforce(vec!["bob", "data1", "read"]));
         assert_eq!(false, e.enforce(vec!["bob", "data1", "write"]));
         assert_eq!(false, e.enforce(vec!["bob", "data2", "read"]));
